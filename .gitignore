@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+*.cbp
+*.layout
+*.depend
+
+*.qoi
+*.bmp
+*.png
