@@ -1,0 +1,6 @@
+#ifndef CPPQOI_HPP_INCLUDED
+#define CPPQOI_HPP_INCLUDED
+
+
+
+#endif // CPPQOI_HPP_INCLUDED
