@@ -35,6 +35,8 @@
 #include <vector>
 #include <filesystem>
 
+#include <iostream>
+
 namespace cppqoi
 {
 
@@ -137,7 +139,7 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
 
     size_t position = 0;
     for(size_t i = 0; i < CPPQOI_MAGIC.size(); i++)
-        if(buffer[position++] == CPPQOI_MAGIC[i])
+        if(buffer[position++] != CPPQOI_MAGIC[i])
             return false;
 
     qoi.width = Utility::Read32(buffer, position);
@@ -159,7 +161,6 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
         if(position < (buffer.size() - CPPQOI_ENDTAG.size()))
         {
             uint8_t tag = buffer[position++];
-
             if(tag == CPPQOI_OP_RGB || tag == CPPQOI_OP_RGBA) //this is just flat loading the pixel
             {
                 uint8_t r = buffer[position++];
@@ -172,14 +173,13 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
             {
                 uint8_t tagOp = (tag & 0b11000000);
                 uint8_t tagOperand = (tag & 0b00111111);
-
                 if(tagOp == CPPQOI_OP_INDEX) // 00
                     pixel = seen[tagOperand];
                 else if(tagOp == CPPQOI_OP_DIFF) // 01
                 {
-                    pixel.r = static_cast<uint8_t>( (((tagOp & 0b110000) >> 4U) & 0b11U) - 2);
-                    pixel.g = static_cast<uint8_t>( (((tagOp & 0b001100) >> 2U) & 0b11U) - 2);
-                    pixel.b = static_cast<uint8_t>( (((tagOp & 0b000011) >> 0U) & 0b11U) - 2);
+                    pixel.r += static_cast<uint8_t>( (((tagOperand & 0b110000) >> 4U) & 0x3) - 2);
+                    pixel.g += static_cast<uint8_t>( (((tagOperand & 0b001100) >> 2U) & 0x3) - 2);
+                    pixel.b += static_cast<uint8_t>( (((tagOperand & 0b000011) >> 0U) & 0x3) - 2);
                 }
                 else if(tagOp == CPPQOI_OP_LUMA) // 10
                 {
@@ -191,13 +191,13 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
                     pixel.b += (dg - 8 + static_cast<uint8_t>((l >> 0U)) && 0b00001111U);
                 }
                 else if(tagOp == CPPQOI_OP_RUN) // 11
-                    for(size_t i = 0; i < tagOperand; i++)
+                    for(uint8_t k = 0; k < tagOperand; k++)
                     {
                         qoi.pixelData[pixelPosition++] = pixel.r;
                         qoi.pixelData[pixelPosition++] = pixel.g;
                         qoi.pixelData[pixelPosition++] = pixel.b;
                         if(qoi.channels == 4)
-                            qoi.pixelData[pixelPosition++] = pixel.r;
+                            qoi.pixelData[pixelPosition++] = pixel.a;
                     }
             }
             seen[HashPixel(pixel) % 64] = pixel;
@@ -207,7 +207,7 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
         qoi.pixelData[pixelPosition++] = pixel.g;
         qoi.pixelData[pixelPosition++] = pixel.b;
         if(qoi.channels == 4)
-            qoi.pixelData[pixelPosition++] = pixel.r;
+            qoi.pixelData[pixelPosition++] = pixel.a;
     }
 
     return true;

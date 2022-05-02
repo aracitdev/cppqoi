@@ -348,7 +348,20 @@ void Bitmap::GetRaw(std::vector<uint8_t>& rgba)
 
 void Bitmap::SetRaw(std::vector<uint8_t>& rgba, size_t w, size_t h)
 {
+    sizeX = w;
+    sizeY = h;
+
     colorData.resize(w * h);
-    for(size_t i = 0; i < w * h; i++)
-        colorData[i] = { rgba[i * 4 + 0], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3] };
+
+    size_t i = 0;
+    for(size_t y = 1; y < sizeY; y++)
+        for(size_t x = 0; x < sizeX; x++)
+        {
+            Color color;
+            color.r = rgba[i++];
+            color.r = rgba[i++];
+            color.r = rgba[i++];
+            color.a = rgba[i++];
+            SetPixel(x,y,color);
+        }
 }

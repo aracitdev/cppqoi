@@ -13,6 +13,10 @@ const std::vector<uint8_t> imageData
 int main(int argc, char* argv[])
 {
     bool success = cppqoi::WriteQoi("test.qoi", {imageData, 2, 2, 3, 0});
-    std::cout <<success;
+
+    cppqoi::QoiFile file;
+    success = success && cppqoi::LoadQoi("test.qoi", file);
+    success =  success && cppqoi::WriteQoi("out.qoi", file);
+    std::cout << success <<"\n";
     return 0;
 }

@@ -15,9 +15,9 @@ int main(int argc, char* argv[])
         std::cout <<"e: encode mode\n";
         std::cout <<"d: decode mode\n";
         //return 0;
-        mode = "e";
-        inputFile = "testbmp.bmp";
-        outputFile = "output.qoi";
+        mode = "d";
+        inputFile = "output.qoi";
+        outputFile = "test2.png";
     }
     else
     {
@@ -39,6 +39,23 @@ int main(int argc, char* argv[])
         std::vector<uint8_t> rgba;
         bmp.GetRaw(rgba);
         cppqoi::WriteQoi(outputFile, {rgba, (uint32_t)bmp.GetWidth(), (uint32_t)bmp.GetHeight(), 4, 1});
+    }
+    else
+    if(mode == "d")
+    {
+        std::cout <<"Decoding " <<inputFile <<" to " <<outputFile<<"\n";
+        cppqoi::QoiFile qoi;
+        if(!cppqoi::LoadQoi(inputFile, qoi))
+        {
+            std::cout <<"Failed to load " <<inputFile <<"\n";
+            return 0;
+        }
+        cppqoi::WriteQoi("out.qoi", qoi);
+
+        std::cout <<"Read image with size " <<qoi.width <<" x " <<qoi.height<<"\n";
+        Bitmap bitmap;
+        bitmap.SetRaw(qoi.pixelData, qoi.width, qoi.height);
+        bitmap.SaveToFile(outputFile);
     }
     return 0;
 }
