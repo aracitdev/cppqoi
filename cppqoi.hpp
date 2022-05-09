@@ -109,6 +109,11 @@ constexpr uint32_t HashPixel(const Rgba& pix)
 namespace Utility
 {
 
+inline void Write8(uint8_t value, std::ostream& stream)
+{
+    stream.write((const char*)&value, sizeof(uint8_t));
+}
+
 inline void Write32(std::vector<uint8_t>& mem, uint32_t value, size_t& position)
 {
     mem[position] = (value >> 24) & 0xff;
@@ -116,6 +121,21 @@ inline void Write32(std::vector<uint8_t>& mem, uint32_t value, size_t& position)
     mem[position + 2] = (value >>  8) & 0xff;
     mem[position + 3] = value & 0xff;
     position += 4;
+}
+
+inline void Write32(uint32_t value, std::ostream& stream)
+{
+    Write8((value >> 24) && 0xff, stream);
+    Write8((value >> 16) && 0xff, stream);
+    Write8((value >> 8) && 0xff, stream);
+    Write8(value && 0xff, stream);
+}
+
+inline uint8_t Read8(std::istream& stream)
+{
+    uint8_t returnV;
+    stream.read(reinterpret_cast<char*>(&returnV), sizeof(uint8_t));
+    return returnV;
 }
 
 inline uint32_t Read32(const std::vector<uint8_t>& mem, size_t& position)
@@ -129,7 +149,158 @@ inline uint32_t Read32(const std::vector<uint8_t>& mem, size_t& position)
     return (w << 24) + (x << 16) + (y << 8) + z;
 }
 
+inline uint32_t Read32(std::istream& stream)
+{
+    uint8_t w,x,y,z;
+    stream.read(reinterpret_cast<char*>(&w), sizeof(uint8_t));
+    stream.read(reinterpret_cast<char*>(&x), sizeof(uint8_t));
+    stream.read(reinterpret_cast<char*>(&y), sizeof(uint8_t));
+    stream.read(reinterpret_cast<char*>(&z), sizeof(uint8_t));
+    return ( static_cast<unsigned>(w) << 24) + (static_cast<unsigned>(x) << 16) + (static_cast<unsigned>(y) << 8) + static_cast<unsigned>(z);
 }
+
+}
+
+class QoiIStream
+{
+public:
+
+    QoiIStream() {}
+
+    QoiIStream(std::shared_ptr<std::istream> str) { Create(str); }
+    QoiIStream(const std::string& str) { Open(str); }
+
+    bool Open(const std::string& filename)
+    {
+        std::shared_ptr<std::ifstream> file = std::make_shared<std::ifstream>(filename.c_str(), std::ifstream::in | std::ifstream::binary);
+        if(file == nullptr || !file->is_open())
+            return false;
+        return Create(file);
+    }
+
+    bool Create(std::shared_ptr<std::istream> str)
+    {
+        if(str == nullptr || !str->good())
+            return false;
+        bool success = LoadHeader(*str);
+        stream = success ? std::dynamic_pointer_cast<std::istream>(str) : nullptr;
+
+        for(uint32_t i = 0; i < seen.size(); i++)
+            seen[i] = Rgba();
+        pixel = Rgba(0, 0, 0, 255);
+        run = 0;
+        pixelIndex = 0;
+
+        return success;
+    }
+
+    QoiIStream& operator>>(Rgba& pixel)
+    {
+        pixel = Get();
+        return *this;
+    }
+
+    Rgba Get(void)
+    {
+        if(run)
+        {
+            run--;
+            pixelIndex++;
+            return pixel;
+        }
+
+        uint8_t tag = Utility::Read8(*stream);
+        if(tag == CPPQOI_OP_RGB || tag == CPPQOI_OP_RGBA)
+        {
+            uint8_t r = Utility::Read8(*stream);
+            uint8_t g = Utility::Read8(*stream);
+            uint8_t b = Utility::Read8(*stream);
+            uint8_t a = (tag == CPPQOI_OP_RGBA) ? Utility::Read8(*stream) : pixel.a;
+            pixel = Rgba(r, g, b, a);
+        }
+        else
+        {
+            uint8_t tagOp = (tag & 0b11000000);
+            uint8_t tagOperand = (tag & 0b00111111);
+            if(tagOp == CPPQOI_OP_INDEX) // 00
+                pixel = seen[tagOperand];
+            else if(tagOp == CPPQOI_OP_DIFF) // 01
+            {
+                pixel.r += static_cast<uint8_t>( (((tagOperand & 0b110000) >> 4U) & 0x3) - 2);
+                pixel.g += static_cast<uint8_t>( (((tagOperand & 0b001100) >> 2U) & 0x3) - 2);
+                pixel.b += static_cast<uint8_t>( (((tagOperand & 0b000011) >> 0U) & 0x3) - 2);
+            }
+            else if(tagOp == CPPQOI_OP_LUMA) // 10
+            {
+                uint8_t l = Utility::Read8(*stream);
+                const uint8_t dg = static_cast<uint8_t>( static_cast<unsigned>(tagOperand) - 32);
+
+                pixel.r += (dg - 8 + static_cast<uint8_t>((l >> 4U)) && 0b00001111U);
+                pixel.g += dg;
+                pixel.b += (dg - 8 + static_cast<uint8_t>((l >> 0U)) && 0b00001111U);
+            }
+            else if(tagOp == CPPQOI_OP_RUN) // 11
+                run = tagOperand;
+        }
+        seen[HashPixel(pixel) % 64] = pixel;
+        pixelIndex++;
+        return pixel;
+    }
+
+    uint32_t GetWidth(void)
+    {
+        return width;
+    }
+
+    uint32_t GetHeight(void)
+    {
+        return height;
+    }
+
+    uint32_t GetChannels(void)
+    {
+        return channels;
+    }
+
+    uint8_t GetColorspace(void)
+    {
+        return colorspace;
+    }
+
+    bool IsGood(void)
+    {
+        return stream != nullptr && stream->good();
+    }
+
+    uint32_t GetPixelIndex(void)
+    {
+        return pixelIndex;
+    }
+private:
+
+    bool LoadHeader( std::istream& str)
+    {
+        for(uint32_t i = 0; i < CPPQOI_MAGIC.size(); i++)
+            if(Utility::Read8(str) != CPPQOI_MAGIC[i])
+                return false;
+        width = Utility::Read32(str);
+        height = Utility::Read32(str);
+        channels = Utility::Read8(str);
+        colorspace = Utility::Read8(str);
+        return channels >= 3 && channels <= 4 && (colorspace == 0 || colorspace == 1) && width != 0 && height != 0 && str.good();
+    }
+
+    std::array<Rgba, 64> seen;
+    Rgba pixel;
+    uint8_t run;
+
+    std::shared_ptr<std::istream> stream;
+    uint32_t width; /// width of the image (>0)
+    uint32_t height; /// height of the image (>0)
+    uint8_t channels; /// channels, 3=RGB, 4=RGBA
+    uint8_t colorspace; ///colorspace, 0 = sRGB, 1 = linear
+    uint32_t pixelIndex ;
+};
 
 inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
 {
