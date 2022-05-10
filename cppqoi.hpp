@@ -165,8 +165,7 @@ class QoiIStream
 {
 public:
 
-    QoiIStream() {}
-
+    QoiIStream() { }
     QoiIStream(std::shared_ptr<std::istream> str) { Create(str); }
     QoiIStream(const std::string& str) { Open(str); }
 
@@ -382,6 +381,16 @@ inline bool LoadQoi(QoiFile& qoi, const std::vector<uint8_t>& buffer)
     }
 
     return true;
+}
+
+inline bool IsQoi(std::istream& stream)
+{
+    size_t pos = stream.tellg();
+    bool returnV = true;
+    for(uint32_t i = 0; i < CPPQOI_MAGIC.size(); i++)
+        returnV = returnV && CPPQOI_MAGIC[i] == Utility::Read8(stream);
+    stream.seekg(pos);
+    return returnV;
 }
 
 inline bool LoadQoi(std::istream& stream, QoiFile& qoi, size_t dataCount)
